@@ -1,0 +1,2496 @@
+<!------------------------------------
+   Javascript palmDraft for Safari 
+        December 5, 2009
+           (Freeware)
+        by: Harry Konstas
+        hkonstas@total.net
+------------------------------------->
+
+<HTML>
+
+<title>palmDraft</title>
+
+<meta name = "viewport" content = "user-scalable=yes, maximum-scale=2.0, width=800">
+
+<body bgcolor="#CCC599" onload="initSheet(860,460);"></body>
+
+<style type="text/css">textarea{ font: normal 8px/normal Arial;}</style>
+
+
+<script>
+
+// globals
+var version = "1.05";
+
+var canvas = 0, zz=0;
+var ctx = 0;
+var tools = 0;
+var myDB;
+
+var gridSize = 16;
+var sheetWidth;
+var sheetHeight;
+var sizeChanged = 0;
+var legendFlag = 0;
+
+var fontSize = 10;
+var fontType = "Courier";
+var textColor = "000000";
+
+var hOffset = 129;
+var vOffset = 7;
+
+var ic = new Array();
+var source = new Array();
+var sheetText = new Array();
+var clipboard = new Array();
+var saveboard = new Array();
+var img = new Image();
+
+var begin=1, selectedArea=0;
+var xOrigin=0, yOrigin=0, startX=0, startY=0, endX=0, endY=0;
+
+
+// Built-in IC Definitions
+ic[100]="100;F/F;3;CLK=,,RST= =1;Q=,,Q= =1";
+ic[101]="555;NE555;6;Vcc=8,RESET=4=1,DISCH=7,THRES=6,CONT=5;TRIG=2,,OUT=3,,GND=1";
+ic[102]="68705;MC68HC705C8;6;VDD=40,VPP=3,,,OSC1=39,OSC2=38,,RESET=1=1,IRQ=1=1,,,PD7=36,TCAP=37,TCMP=35,,,,PD5/S5=34,PD4/SCK=33,PD3/MOSI=32,PD2/MOSO=31,PD1/TD0=30,PD0/RDI=29,,,VSS=20;PA0=11,PA1=10,PA2=9,PA3=8,PA4=7,PA5=6,PA6=5,PA7=4,,PB0=12,PB1=13,PB2=14,PB3=15,PB4=16,PB5=17,PB6=18,PB7=19,,PC0=28,PC1=27,PC2=26,PC3=25,PC4=25,PC5=23,PC6=22,PC7=21";
+
+
+// -------------------------
+//     Canvas functions 
+// -------------------------
+
+function createCanvas(width,height){
+
+  canvas = document.createElement("canvas");
+
+  canvas.width = width;
+  canvas.height = height;
+  canvas.style.backgroundColor = "white";
+  canvas.style.marginBottom = 0;
+  canvas.style.marginLeft=120;
+  canvas.addEventListener('mousedown',tapEvent,false);
+
+  document.body.appendChild(canvas);
+
+  // Get canvas context
+  ctx = canvas.getContext("2d");
+
+  ctx.globalAlpha=1.0;
+  //ctx.strokeOpacity=50;
+
+  // clear canvas area 
+  ctx.clearRect(0, 0, width,height);
+
+}
+
+
+// -------------------------
+//     Tools function
+// -------------------------
+
+// Create tool buttons
+function createTools() {
+ 
+  var i=0,d=0,device=null;
+  tools = document.createElement("div");
+
+  txtrow = (sheetHeight/(gridSize-6))-32;
+
+  var element='<center><form name="tools"><hr><small><i><b>palmDraft '+version+'</b></i><br>[javaScript]</small><hr>'; 
+  element+='<input type="button" value="-----" onclick="wmode();">'
+  element+='<input type="button" value="GND" onclick="gmode();"><br>'
+
+  // item drop down menu
+  element+='<select name="component">';
+  element+='<option value="w">Line/Junction</option><option value="v">Power</option>';
+  element+='<option value="g">Ground</option><option value="b">Bus</option><option value="t">Label</option>';
+  element+='<option value="rV">Resistor</option><option value="cV">Capacitor</option>';
+  element+='<option value="eV">Electrolytic</option>';
+  element+='<option value="hR">Coil</option><option value="hH">Coil H</option><option value="tR">Transformer</option>';
+  element+='<option value="dR">Diode</option><option value="dU">Diode U</option><option value="dD">Diode D</option>';
+  element+='<option value="z">Zener</option><option value="L">Led</option>';
+  element+='<option value="nR">NPN</option><option value="pR">PNP</option>';
+  element+='<option value="o">OP Amp</option><option value="tp">Test point</option>';
+  element+='<option value="sW">Switch</option><option value="pB">Push Button</option>';
+  element+='<option value="f">Fuse</option><option value="xT">Xtal</option>';
+  element+='<option value="aR">Arrow</option><option value="eA">Entry Arrow</option>';
+  element+='<option value="s">---- Logic ----</option>'; // Logic section
+  element+='<option value="AND">AND Gate</option><option value="NAND">NAND Gate</option>';
+  element+='<option value="OR">OR Gate</option><option value="NOR">NOR Gate</option><option value="XOR">XOR Gate</option>';
+  element+='<option value="INV">INV Gate</option><option value="BUF">Buffer Gate</option>';
+
+  element+='<option value="s">---- ICs ----</option>'; // select mode
+
+  // ic devices
+  for(i in ic) {
+    device = ic[i].split(";");d=(i*1)+1;
+    element+='<option value="'+device[0]+'">'+device[1]+'</option>';
+  }
+
+  element+='</select><br>';
+
+  // text labels
+  element+='<input type="text" name="text" value="" size="14"><br>';
+  element+='<input type="checkbox" name="Flip" value="55"><small>Flip</small><input type="button" value="Undo" onclick="undo();"><br>';
+  element+='<input type="button" value="Cancel/Refresh" onclick="cancel();"><br>';
+  element+='<input type="button" value="Repeat-Line" onclick="repeat();"><br>';
+
+  element+='<input type="button" value="Select" onclick="selectBlock();">';
+  element+='<input type="button" value="Cut" onclick="cutBlock();"><br>';
+  element+='<input type="button" value="Copy" onclick="copyBlock();">';
+  element+='<input type="button" value="Paste" onclick="pasteBlock();"><br>';
+  element+='<input type="button" value="Print" onclick="printSheet(sheetWidth,sheetHeight);">';
+  element+='<input type="button" value="Help" onclick="showHelp();"><br>';
+
+  element+='<small>Diagram Source:</small><br><textarea rows="'+ txtrow; 
+  element+='" cols="20" name="source" onchange="importSource();"></textarea><br>';
+
+  element+='</form></center><br>';
+ 
+  tools.style.position = "absolute";
+  tools.style.left = 1;
+  tools.style.top =  0;
+  tools.innerHTML = element;
+
+  document.body.appendChild(tools);
+  
+}
+
+
+
+// -------------------------
+//     Graphics functions 
+// -------------------------
+
+
+function setPenColor(r,g,b) {
+  s="rgb("+r+","+g+","+b+")";
+  ctx.strokeStyle = s;
+}
+
+
+function setFillColor(r,g,b) {
+  s="rgb("+r+","+g+","+b+")";
+  ctx.fillStyle = s;
+}
+
+
+function setPenWidth(size) {
+  ctx.lineWidth = size;
+}
+
+
+function drawDot(x, y, size) {
+  ctx.fillRect(x, y, size, size);
+}
+
+
+function drawLine(x,y,dx,dy) {
+
+  ctx.beginPath();
+  ctx.moveTo(x,y);
+  ctx.lineTo(dx,dy);
+  ctx.stroke();
+  ctx.closePath();
+
+}
+
+
+function drawRectangle(x,y,w,h) {
+  ctx.strokeRect (x, y, w, h);
+}
+
+
+function fillRectangle(x, y, w, h) {
+  ctx.fillRect(x, y, w, h);
+}
+
+
+function drawText(x, y, text) {
+ 
+  var div = document.createElement("div");
+ 
+  div.style.position = "absolute";
+  div.style.left = x+hOffset;
+  div.style.top = y+vOffset;
+  div.style.fontSize = fontSize;
+  div.style.fontFamily = fontType;
+  div.innerHTML = text;
+  div.style.color = textColor;
+
+  document.body.appendChild(div);
+  sheetText.push(div);  
+
+}
+
+
+function drawCircle(x, y, r) {
+ 
+  var endAngle = Math.PI*2;
+
+  setPenWidth(2);
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,endAngle,true);
+  ctx.stroke();
+  setPenWidth(1);
+
+}
+
+
+function drawArc(x, y, r, startAngle, endAngle) {
+ 
+  setPenWidth(2);
+  ctx.beginPath();
+  ctx.arc(x,y,r,startAngle,endAngle,true);
+  ctx.stroke();
+  setPenWidth(1);
+
+}
+
+
+function dcursor(id,visibility,x,y) {
+
+  var prop = new Array();
+  var leftPins = new Array();
+
+  // find device by ID
+  for(i in ic) {
+    prop = ic[i].split(";");
+    if(prop[0]==id) break;
+  }
+
+  width = prop[2]*16;
+  leftPins = prop[3].split(",");
+
+  if(visibility) setPenColor(0,0,0);
+  if(!visibility) setPenColor(255,255,255);
+
+  setPenWidth(2); setPenColor(0,180,0);
+  drawRectangle(x+1,y+8, width, (leftPins.length*gridSize)+4);
+
+  setPenColor(0,0,0);
+
+}
+
+
+function cursor(mode,visibility,x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+
+  if(mode>0) {
+    dcursor(mode,visibility,x,y);
+    return;
+  }
+
+  if(visibility)  setFillColor(0,180,0);
+  if(!visibility) setFillColor(255,255,255);
+
+  setPenWidth(2);
+  ctx.fillRect(x, y-2, 2, 2);
+  ctx.fillRect(x, y+2, 2, 2);
+  ctx.fillRect(x-2, y, 2, 2);
+  ctx.fillRect(x+2, y, 2, 2);
+  setPenWidth(1);
+
+  setFillColor(0,0,0);
+
+}
+
+
+// -------------------------
+//      Draw primitives
+// -------------------------
+
+
+// junction
+
+function j(x, y) {
+  setFillColor(0,0,0);
+  ctx.fillRect((x*gridSize)-3,(y*gridSize)-3,6,6);
+}
+
+
+// wire
+
+function w(x,y,x2,y2) {
+
+  // junction 
+  if(x==x2&&y==y2) {
+    j(x,y); return;
+  }
+
+  setPenWidth(2);
+  drawLine(x*gridSize,y*gridSize,x2*gridSize,y2*gridSize);
+  setPenWidth(1);
+
+}
+
+
+// Vcc power
+
+function v(x,y,x2,y2) {
+
+  // junction 
+  if(x==x2&&y==y2) {
+    j(x,y); return;
+  }
+
+  setPenColor(200,0,0);
+  setPenWidth(2);
+  drawLine(x*gridSize,y*gridSize,x2*gridSize,y2*gridSize);
+  setPenWidth(1);
+  setPenColor(0,0,0);
+
+}
+
+
+// bus
+
+function b(x,y,x2,y2) {
+  setPenWidth(5);
+  setPenColor(0,0,150);
+  drawLine(x*gridSize,y*gridSize,x2*gridSize,y2*gridSize);
+  setPenWidth(1);
+  setPenColor(0,0,0);
+}
+
+
+// image
+
+function c(x,y,symbol) {
+
+  symbol = "lib/"+symbol+".png";
+  img.src = symbol;
+ 
+  ctx.drawImage(img, x*gridSize, (y*gridSize)+8);
+  
+}
+
+
+// text
+
+function t(x,y,text) {
+
+  if(!text) return;
+
+  x=x*gridSize;y=y*gridSize;
+
+  fontSize = 12;
+  fontType = "Arial";
+
+  textColor = "076060";
+  drawText(x-2,y+2,text);
+  textColor = "000000";
+
+  fontSize = 10;
+  fontType = "Courier";
+
+}
+
+
+// -------------------------
+//      Draw components
+// -------------------------
+
+
+// Device (IC)
+
+function d(x, y, flip, id){
+
+  var xpos = 0, ypos = 0, width = 0;
+   
+  var prop = new Array();
+  var leftPins = new Array();
+  var rightPins = new Array();
+  var pinout = new Array();
+  var ds = new Array();
+
+  // find device by ID
+  for(i in ic) {
+    prop = ic[i].split(";");
+    if(prop[0]==id) break;
+  }
+
+  desc = prop[1]; 
+  width = prop[2]*16;
+  x=x*gridSize; y=y*gridSize;
+
+  leftPins = prop[3].split(",");
+  rightPins = prop[4].split(",");
+
+  // IC description
+  drawText(x+4,y-6,desc);
+
+  setPenWidth(4);
+  setPenColor(0,0,0);
+  vpos=y+8;
+
+  // IC body
+  setFillColor(255,255,160);
+  setPenColor(0,0,100);
+  fillRectangle(x+1, vpos-1, width, (leftPins.length*gridSize)+4);
+  drawRectangle(x+1,vpos-1, width, (leftPins.length*gridSize)+4);
+  setPenColor(0,0,0);
+
+  pinout = leftPins;
+  if(flip) { pinout=rightPins;}
+
+  // set offsets
+  x+=2; ypos=vpos+3;
+  yend = pinout.length;
+
+  // Draw left side
+  for(r=0;r<yend;r++){
+
+    setPenWidth(2);
+    ds=pinout[r].split("=");
+    textColor = "550055";
+    drawText(x+4,ypos,ds[0]);
+    textColor = "CC0000";
+ 
+    if(ds[0]){drawLine(x-18,ypos+5,x,ypos+5);}
+    if(ds[1]){drawText(x-(ds[1].length*6)-4,ypos-6,ds[1]);}
+
+    setPenWidth(1);
+    if(ds[2]){drawLine(x+6,ypos,x+6+ds[0].length*6,ypos);}
+
+    ypos=ypos+gridSize;
+  }
+
+  pinout = rightPins;
+  if(flip) { pinout=leftPins;}
+
+  ypos = vpos+3;
+  yend = pinout.length;
+
+
+  // Draw right side       
+  for(r=0;r<yend;r++){
+
+    setPenWidth(2);
+    ds=pinout[r].split("=");
+    xpos=x+width-(ds[0].length*6)-8;
+    textColor = "550055";
+    drawText(xpos,ypos,ds[0]);
+    textColor = "CC0000";
+
+    if(ds[0]) {drawLine(x+width,ypos+5,x+width+15,ypos+5);}
+    if(ds[1]){drawText(x+width,ypos-6,ds[1]);}
+
+    setPenWidth(1);
+    textColor = "000000";
+
+if(ds[2]){drawLine(xpos+1,ypos,xpos+1+ds[0].length*6,ypos);}
+ 
+    ypos=ypos+gridSize;
+  }
+      
+}
+
+
+// Ground
+
+function g(x,y) {
+
+  setPenWidth(2);
+
+  x=x*gridSize;y=y*gridSize;
+  ctx.beginPath();ctx.moveTo(x,y);
+
+  y+=16;ctx.lineTo(x,y);ctx.stroke();
+  x-=9;ctx.moveTo(x,y);
+  x+=18;ctx.lineTo(x,y);ctx.stroke();
+  x-=15;y+=3;ctx.moveTo(x,y);
+  x+=12;ctx.lineTo(x,y);ctx.stroke();
+  x-=9;y+=3;ctx.moveTo(x,y);
+  x+=6;ctx.lineTo(x,y);ctx.stroke();
+
+  setPenWidth(2);
+  ctx.closePath();
+
+}
+
+
+// Resistor (Horizontal)
+
+function rH(x,y) {
+
+  setPenWidth(1);
+
+  x=x*gridSize; y=y*gridSize;
+  ctx.beginPath();ctx.moveTo(x,y);
+
+  x+=6;setPenWidth(2);ctx.lineTo(x,y);ctx.stroke();setPenWidth(1);
+  x+=3;y+=4;ctx.lineTo(x,y);ctx.stroke();
+  x+=3;y-=8;ctx.lineTo(x,y);ctx.stroke();
+  x+=3;y+=8;ctx.lineTo(x,y);ctx.stroke();
+  x+=3;y-=8;ctx.lineTo(x,y);ctx.stroke();
+  x+=3;y+=8;ctx.lineTo(x,y);ctx.stroke();
+  x+=3;y-=8;ctx.lineTo(x,y);ctx.stroke();
+  x+=3;y+=4;ctx.lineTo(x,y);ctx.stroke();
+  x+=5;setPenWidth(2);ctx.lineTo(x+1,y);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Resistor (vertical)
+
+function rV(x,y) {
+
+  setPenWidth(1);
+
+  x=x*gridSize; y=y*gridSize;
+  ctx.beginPath();ctx.moveTo(x,y);
+
+  y+=5;setPenWidth(2);ctx.lineTo(x,y);ctx.stroke();setPenWidth(1);
+  y+=3;x+=4;ctx.lineTo(x,y);ctx.stroke();
+  y+=3;x-=8;ctx.lineTo(x,y);ctx.stroke();
+  y+=3;x+=8;ctx.lineTo(x,y);ctx.stroke();
+  y+=3;x-=8;ctx.lineTo(x,y);ctx.stroke();
+  y+=3;x+=8;ctx.lineTo(x,y);ctx.stroke();
+  y+=3;x-=8;ctx.lineTo(x,y);ctx.stroke();
+  y+=3;x+=4;ctx.lineTo(x,y);ctx.stroke();
+  y+=5;setPenWidth(2);ctx.lineTo(x,y+1);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Capacitor (horizontal)
+
+function cH(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+14,y);ctx.stroke();  
+  ctx.moveTo(x+14,y-8);ctx.lineTo(x+14,y+8);ctx.stroke();
+  ctx.moveTo(x+21,y-8);ctx.lineTo(x+21,y+8);ctx.stroke();
+  ctx.moveTo(x+21,y);ctx.lineTo(x+35,y);ctx.stroke();
+ 
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Capacitor (vertical)
+
+function cV(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x,y+14);ctx.stroke();  
+  ctx.moveTo(x-8,y+14);ctx.lineTo(x+8,y+14);ctx.stroke();
+  ctx.moveTo(x-8,y+21);ctx.lineTo(x+8,y+21);ctx.stroke();
+  ctx.moveTo(x,y+21);ctx.lineTo(x,y+35);ctx.stroke();
+ 
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Electrolytic (vertical)
+
+function eV(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x,y+14);ctx.stroke();  
+  ctx.moveTo(x-4,y+14);ctx.lineTo(x+4,y+14);ctx.stroke();
+  ctx.moveTo(x-4,y+16);ctx.lineTo(x+4,y+16);ctx.stroke();
+  ctx.moveTo(x-8,y+21);ctx.lineTo(x+8,y+21);ctx.stroke();
+  ctx.moveTo(x,y+21);ctx.lineTo(x,y+35);ctx.stroke();
+  ctx.moveTo(x-8,y+21);ctx.lineTo(x-8,y+12);ctx.stroke();
+  ctx.moveTo(x+8,y+21);ctx.lineTo(x+8,y+12);ctx.stroke();
+  ctx.moveTo(x+4,y+5);ctx.lineTo(x+12,y+5);ctx.stroke();
+  ctx.moveTo(x+8,y+1);ctx.lineTo(x+8,y+9);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Coil (right)
+
+function hR(x,y) {
+
+  sAng=1.9; eAng=4.4;
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x,y+8);ctx.stroke(); 
+  ctx.moveTo(x,y+40);ctx.lineTo(x,y+49);ctx.stroke();setPenWidth(1);  
+  drawArc(x+1,y+14,5,sAng,eAng);
+  drawArc(x+1,y+24,5,sAng,eAng);
+  drawArc(x+1,y+34,5,sAng,eAng);
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Coil (horizontal)
+
+function hH(x,y) {
+
+  sAng=0.4; eAng=2.7;
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+8,y);ctx.stroke(); 
+  ctx.moveTo(x+40,y);ctx.lineTo(x+49,y);ctx.stroke();setPenWidth(1);  
+  drawArc(x+14,y-1,5,sAng,eAng);
+  drawArc(x+24,y-1,5,sAng,eAng);
+  drawArc(x+34,y-1,5,sAng,eAng);
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Coil (left)
+
+function hL(x,y) {
+
+  sAng=5.1; eAng=1.3; 
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x,y+8);ctx.stroke(); 
+  ctx.moveTo(x,y+40);ctx.lineTo(x,y+49);ctx.stroke();setPenWidth(1);  
+  drawArc(x-1,y+14,5,sAng,eAng);
+  drawArc(x-1,y+24,5,sAng,eAng);
+  drawArc(x-1,y+34,5,sAng,eAng);
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+// Transformer
+
+function tR(x,y) {
+
+  hR(x,y);
+  hL(x+2,y);
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x+14,y+8);ctx.lineTo(x+14,y+40);ctx.stroke();  
+  ctx.moveTo(x+19,y+8);ctx.lineTo(x+19,y+40);ctx.stroke();  
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Diode (right)
+
+function dR(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+10,y);ctx.stroke();setPenWidth(1);  
+  ctx.moveTo(x+10,y-8);ctx.lineTo(x+10,y+8);ctx.stroke();
+  ctx.moveTo(x+10,y-7);ctx.lineTo(x+26,y);ctx.stroke();
+  ctx.moveTo(x+10,y+7);ctx.lineTo(x+26,y);ctx.stroke();
+  ctx.moveTo(x+26,y-9);ctx.lineTo(x+26,y+9);ctx.stroke();
+  setPenWidth(2);ctx.moveTo(x+26,y);ctx.lineTo(x+33,y);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Diode (left)
+
+function dL(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+10,y);ctx.stroke();setPenWidth(1);  
+  ctx.moveTo(x+10,y-9);ctx.lineTo(x+10,y+9);ctx.stroke();
+  ctx.moveTo(x+10,y);ctx.lineTo(x+26,y-7);ctx.stroke();
+  ctx.moveTo(x+10,y);ctx.lineTo(x+26,y+7);ctx.stroke();
+  ctx.moveTo(x+26,y-8);ctx.lineTo(x+26,y+8);ctx.stroke();
+  setPenWidth(2);ctx.moveTo(x+26,y);ctx.lineTo(x+33,y);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Diode (UP)
+
+function dU(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x,y+10);ctx.stroke();setPenWidth(1);  
+  ctx.moveTo(x-9,y+10);ctx.lineTo(x+9,y+10);ctx.stroke();
+  ctx.moveTo(x,y+10);ctx.lineTo(x-7,y+26);ctx.stroke();
+  ctx.moveTo(x,y+10);ctx.lineTo(x+7,y+26);ctx.stroke();
+  ctx.moveTo(x-8,y+26);ctx.lineTo(x+8,y+26);ctx.stroke();
+  setPenWidth(2);ctx.moveTo(x,y+26);ctx.lineTo(x,y+33);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Diode (Down)
+
+function dD(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x,y+10);ctx.stroke();setPenWidth(1);  
+  ctx.moveTo(x-9,y+10);ctx.lineTo(x+9,y+10);ctx.stroke();
+  ctx.moveTo(x-8,y+10);ctx.lineTo(x,y+26);ctx.stroke();
+  ctx.moveTo(x+8,y+10);ctx.lineTo(x,y+26);ctx.stroke();
+  ctx.moveTo(x-8,y+26);ctx.lineTo(x+8,y+26);ctx.stroke();
+  setPenWidth(2);ctx.moveTo(x,y+26);ctx.lineTo(x,y+33);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Diode (Zener)
+
+function z(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x,y+10);ctx.stroke();setPenWidth(1);  
+  ctx.moveTo(x-9,y+10);ctx.lineTo(x+9,y+10);ctx.stroke();
+  ctx.moveTo(x,y+10);ctx.lineTo(x-7,y+26);ctx.stroke();
+  ctx.moveTo(x,y+10);ctx.lineTo(x+7,y+26);ctx.stroke();
+  ctx.moveTo(x-8,y+26);ctx.lineTo(x+8,y+26);ctx.stroke();
+  setPenWidth(2);ctx.moveTo(x,y+26);ctx.lineTo(x,y+33);ctx.stroke();
+  ctx.moveTo(x-8,y+10);ctx.lineTo(x-8,y+15);ctx.stroke();
+  ctx.moveTo(x+8,y+10);ctx.lineTo(x+8,y+5);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// LED
+
+function L(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x,y+10);ctx.stroke();setPenWidth(1);  
+  ctx.moveTo(x-9,y+10);ctx.lineTo(x+9,y+10);ctx.stroke();
+  ctx.moveTo(x-8,y+10);ctx.lineTo(x,y+26);ctx.stroke();
+  ctx.moveTo(x+8,y+10);ctx.lineTo(x,y+26);ctx.stroke();
+  ctx.moveTo(x-8,y+26);ctx.lineTo(x+8,y+26);ctx.stroke();
+  setPenWidth(2);ctx.moveTo(x,y+26);ctx.lineTo(x,y+33);ctx.stroke();
+
+  ctx.moveTo(x+18,y+10);ctx.lineTo(x+25,y+5);ctx.stroke();
+  ctx.moveTo(x+18,y+15);ctx.lineTo(x+25,y+10);ctx.stroke();
+  
+  setPenWidth(1);
+  drawCircle(x,y+17,13);
+  ctx.closePath();
+
+}
+
+
+// NPN right
+
+function nR(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+17,y);ctx.stroke(); // base line
+  ctx.moveTo(x+17,y-10);ctx.lineTo(x+17,y+10);ctx.stroke(); // base bar
+  ctx.moveTo(x+18,y-10);ctx.lineTo(x+18,y+10);ctx.stroke(); // base bar
+  ctx.moveTo(x+17,y-2);ctx.lineTo(x+32,y-16);ctx.stroke(); // collector
+  ctx.moveTo(x+17,y+2);ctx.lineTo(x+32,y+16);ctx.stroke(); // emitter
+  ctx.moveTo(x+22,y+12);ctx.lineTo(x+30,y+14);ctx.stroke(); // arrow
+  ctx.moveTo(x+27,y+6);ctx.lineTo(x+30,y+14);ctx.stroke(); // arrow
+
+  drawCircle(x+23,y,15);
+  ctx.closePath();
+
+}
+
+
+// NPN left
+
+function nL(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x-17,y);ctx.stroke(); // base line
+  ctx.moveTo(x-17,y-10);ctx.lineTo(x-17,y+10);ctx.stroke(); // base bar
+  ctx.moveTo(x-18,y-10);ctx.lineTo(x-18,y+10);ctx.stroke(); // base bar
+  ctx.moveTo(x-17,y-2);ctx.lineTo(x-32,y-16);ctx.stroke(); // collector
+  ctx.moveTo(x-17,y+2);ctx.lineTo(x-32,y+16);ctx.stroke(); // emitter
+  ctx.moveTo(x-22,y+12);ctx.lineTo(x-30,y+14);ctx.stroke(); // arrow
+  ctx.moveTo(x-27,y+6);ctx.lineTo(x-30,y+14);ctx.stroke(); // arrow
+
+  drawCircle(x-23,y,15);
+  ctx.closePath();
+
+}
+
+
+// PNP right
+
+function pR(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+17,y);ctx.stroke(); // base line
+  ctx.moveTo(x+17,y-10);ctx.lineTo(x+17,y+10);ctx.stroke(); // base bar
+  ctx.moveTo(x+18,y-10);ctx.lineTo(x+18,y+10);ctx.stroke(); // base bar
+  ctx.moveTo(x+17,y-2);ctx.lineTo(x+32,y-16);ctx.stroke(); // collector
+  ctx.moveTo(x+17,y+2);ctx.lineTo(x+32,y+16);ctx.stroke(); // emitter
+  ctx.moveTo(x+22,y-12);ctx.lineTo(x+17,y-2);ctx.stroke(); // arrow
+  ctx.moveTo(x+27,y-6);ctx.lineTo(x+17,y-2);ctx.stroke(); // arrow
+
+  drawCircle(x+23,y,15);
+  ctx.closePath();
+
+}
+
+
+// PNP left
+
+function pL(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x-17,y);ctx.stroke(); // base line
+  ctx.moveTo(x-17,y-10);ctx.lineTo(x-17,y+10);ctx.stroke(); // base bar
+  ctx.moveTo(x-18,y-10);ctx.lineTo(x-18,y+10);ctx.stroke(); // base bar
+  ctx.moveTo(x-17,y-2);ctx.lineTo(x-32,y-16);ctx.stroke(); // collector
+  ctx.moveTo(x-17,y+2);ctx.lineTo(x-32,y+16);ctx.stroke(); // emitter
+  ctx.moveTo(x-22,y-12);ctx.lineTo(x-17,y-2);ctx.stroke(); // arrow
+  ctx.moveTo(x-27,y-6);ctx.lineTo(x-17,y-2);ctx.stroke(); // arrow
+
+  drawCircle(x-23,y,15);
+  ctx.closePath();
+
+}
+
+
+// Test point
+
+function tp(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+
+  drawCircle(x,y-20,4);
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y-16);
+  ctx.lineTo(x,y);
+  ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// OP Amp
+
+function o(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+8,y);ctx.stroke();
+  ctx.moveTo(x,y+32);ctx.lineTo(x+8,y+32);ctx.stroke();
+
+  ctx.moveTo(x+8,y-12);ctx.lineTo(x+8,y+44);ctx.stroke();
+
+  ctx.moveTo(x+8,y-12);ctx.lineTo(x+64,y+16);ctx.stroke();
+  ctx.moveTo(x+8,y+44);ctx.lineTo(x+64,y+16);ctx.stroke();
+
+  ctx.moveTo(x+12,y);ctx.lineTo(x+20,y);ctx.stroke();
+  ctx.moveTo(x+12,y+32);ctx.lineTo(x+20,y+32);ctx.stroke();
+  ctx.moveTo(x+16,y+28);ctx.lineTo(x+16,y+36);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Switch
+
+function sW(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+10,y);ctx.stroke();
+  drawCircle(x+14,y,3);
+  setPenWidth(2);
+  ctx.moveTo(x+38,y);ctx.lineTo(x+48,y);ctx.stroke();
+  drawCircle(x+34,y,3);
+  setPenWidth(2);
+  ctx.moveTo(x+16,y);ctx.lineTo(x+30,y-10);ctx.stroke();
+  ctx.moveTo(x+16,y+1);ctx.lineTo(x+30,y-9);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Push button
+
+function pB(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+10,y);ctx.stroke();
+  ctx.moveTo(x+38,y);ctx.lineTo(x+48,y);ctx.stroke();
+  ctx.moveTo(x+22,y-10);ctx.lineTo(x+26,y-10);ctx.stroke();
+  ctx.moveTo(x+22,y-9);ctx.lineTo(x+26,y-9);ctx.stroke();
+  ctx.moveTo(x+16,y-8);ctx.lineTo(x+32,y-8);ctx.stroke();
+  ctx.moveTo(x+16,y-7);ctx.lineTo(x+32,y-7);ctx.stroke();
+
+  drawCircle(x+14,y,3);
+  drawCircle(x+34,y,3);
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// fuse
+
+function f(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+10,y);ctx.stroke();
+  ctx.moveTo(x+38,y);ctx.lineTo(x+48,y);ctx.stroke();
+
+  ctx.moveTo(x+18,y);ctx.lineTo(x+22,y-8);ctx.stroke();
+  ctx.moveTo(x+22,y-8);ctx.lineTo(x+26,y+8);ctx.stroke();
+  ctx.moveTo(x+26,y+8);ctx.lineTo(x+31,y);ctx.stroke();
+
+  drawCircle(x+14,y,3);
+  drawCircle(x+34,y,3);
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Crystal
+
+function xT(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+8,y);ctx.stroke(); 
+  ctx.moveTo(x+8,y-8);ctx.lineTo(x+8,y+8);ctx.stroke();
+  ctx.moveTo(x+27,y-8);ctx.lineTo(x+27,y+8);ctx.stroke();
+  ctx.moveTo(x+27,y);ctx.lineTo(x+35,y);ctx.stroke();
+
+  ctx.strokeRect(x+12,y-12,11,24);
+ 
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Arrow (right)
+
+function aR(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+17,y);ctx.stroke();
+  ctx.moveTo(x+10,y-7);ctx.lineTo(x+17,y);ctx.stroke();
+  ctx.moveTo(x+10,y+7);ctx.lineTo(x+17,y);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Arrow (left)
+
+function aL(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+17,y);ctx.stroke();
+  ctx.moveTo(x+10,y-7);ctx.lineTo(x,y);ctx.stroke();
+  ctx.moveTo(x+10,y+7);ctx.lineTo(x,y);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// Entry Arrow
+
+function eA(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y-7);ctx.lineTo(x+7,y);ctx.stroke();
+  ctx.moveTo(x,y+7);ctx.lineTo(x+7,y);ctx.stroke();
+  ctx.moveTo(x+7,y);ctx.lineTo(x+17,y);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+function AND(x,y) {
+
+  sAng=1.7; eAng=4.6;
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x-16,y);ctx.lineTo(x-16,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+8);ctx.lineTo(x,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+32);ctx.lineTo(x-16,y+24);ctx.stroke();
+  ctx.moveTo(x-16,y+24);ctx.lineTo(x,y+24);ctx.stroke();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+16,y);ctx.stroke();
+  ctx.moveTo(x,y);ctx.lineTo(x,y+32);ctx.stroke();
+  ctx.moveTo(x,y+32);ctx.lineTo(x+16,y+32);ctx.stroke();
+
+  ctx.moveTo(x+32,y+16);ctx.lineTo(x+48,y+16);ctx.stroke();
+  drawArc(x+16,y+16,16,sAng,eAng);
+  
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+function NAND(x,y) {
+
+  sAng=1.7; eAng=4.6;
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x-16,y);ctx.lineTo(x-16,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+8);ctx.lineTo(x,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+32);ctx.lineTo(x-16,y+24);ctx.stroke();
+  ctx.moveTo(x-16,y+24);ctx.lineTo(x,y+24);ctx.stroke();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+16,y);ctx.stroke();
+  ctx.moveTo(x,y);ctx.lineTo(x,y+32);ctx.stroke();
+  ctx.moveTo(x,y+32);ctx.lineTo(x+16,y+32);ctx.stroke();
+
+  ctx.moveTo(x+40,y+16);ctx.lineTo(x+49,y+16);ctx.stroke();
+
+  drawArc(x+16,y+16,16,sAng,eAng);
+  drawCircle(x+37,y+16,4);
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+function OR(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x-16,y);ctx.lineTo(x-16,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+8);ctx.lineTo(x+13,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+32);ctx.lineTo(x-16,y+24);ctx.stroke();
+  ctx.moveTo(x-16,y+24);ctx.lineTo(x+13,y+24);ctx.stroke();
+
+  ctx.moveTo(x+4,y);ctx.lineTo(x+16,y);ctx.stroke();
+  ctx.moveTo(x+4,y+32);ctx.lineTo(x+16,y+32);ctx.stroke();
+
+  ctx.moveTo(x+32,y+16);ctx.lineTo(x+48,y+16);ctx.stroke();
+
+  sAng=1.7; eAng=4.6;
+  drawArc(x+16,y+16,16,sAng,eAng);
+
+  sAng=0.9; eAng=5.4;
+  drawArc(x-6,y+16,20,sAng,eAng);
+  
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+function NOR(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x-16,y);ctx.lineTo(x-16,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+8);ctx.lineTo(x+13,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+32);ctx.lineTo(x-16,y+24);ctx.stroke();
+  ctx.moveTo(x-16,y+24);ctx.lineTo(x+13,y+24);ctx.stroke();
+
+  ctx.moveTo(x+4,y);ctx.lineTo(x+16,y);ctx.stroke();
+  ctx.moveTo(x+4,y+32);ctx.lineTo(x+16,y+32);ctx.stroke();
+
+  ctx.moveTo(x+40,y+16);ctx.lineTo(x+48,y+16);ctx.stroke();
+
+  sAng=1.7; eAng=4.6;
+  drawArc(x+16,y+16,16,sAng,eAng);
+
+  sAng=0.9; eAng=5.4;
+  drawArc(x-6,y+16,20,sAng,eAng);
+
+  drawCircle(x+37,y+16,4);
+  
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+function XOR(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x-16,y);ctx.lineTo(x-16,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+8);ctx.lineTo(x+13,y+8);ctx.stroke();
+  ctx.moveTo(x-16,y+32);ctx.lineTo(x-16,y+24);ctx.stroke();
+  ctx.moveTo(x-16,y+24);ctx.lineTo(x+13,y+24);ctx.stroke();
+
+  ctx.moveTo(x+4,y);ctx.lineTo(x+16,y);ctx.stroke();
+  ctx.moveTo(x+4,y+32);ctx.lineTo(x+16,y+32);ctx.stroke();
+
+  ctx.moveTo(x+32,y+16);ctx.lineTo(x+48,y+16);ctx.stroke();
+
+  sAng=1.7; eAng=4.6;
+  drawArc(x+16,y+16,16,sAng,eAng);
+
+  sAng=0.9; eAng=5.4;
+  drawArc(x-6,y+16,20,sAng,eAng);
+  drawArc(x-14,y+16,20,sAng,eAng);
+  
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+function INV(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+8,y);ctx.stroke();
+
+  ctx.moveTo(x+8,y-16);ctx.lineTo(x+8,y+16);ctx.stroke();
+  ctx.moveTo(x+8,y-16);ctx.lineTo(x+34,y);ctx.stroke();
+  ctx.moveTo(x+8,y+16);ctx.lineTo(x+34,y);ctx.stroke();
+
+  ctx.moveTo(x+42,y);ctx.lineTo(x+49,y);ctx.stroke();
+
+  drawCircle(x+39,y,4);
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+function BUF(x,y) {
+
+  x=x*gridSize; y=y*gridSize;
+  setPenWidth(2);ctx.beginPath();
+
+  ctx.moveTo(x,y);ctx.lineTo(x+8,y);ctx.stroke();
+
+  ctx.moveTo(x+8,y-16);ctx.lineTo(x+8,y+16);ctx.stroke();
+  ctx.moveTo(x+8,y-16);ctx.lineTo(x+38,y);ctx.stroke();
+  ctx.moveTo(x+8,y+16);ctx.lineTo(x+38,y);ctx.stroke();
+
+  ctx.moveTo(x+37,y);ctx.lineTo(x+49,y);ctx.stroke();
+
+  setPenWidth(1);
+  ctx.closePath();
+
+}
+
+
+// -------------------------
+//       Sheet functions 
+// -------------------------
+
+
+function sheet(width,height) {
+
+  var i=0;
+
+  if(sizeChanged) return;
+
+  window.scrollTo(0,1);
+
+  sheetWidth = width;
+  sheetHeight = height; 
+
+  document.body.removeChild(tools);
+  createTools(); 
+  
+  canvas.width=width;
+  canvas.height=height;
+
+  clearSheet(1);  
+
+  selectedArea = 0;
+  sizeChanged = 1;
+  begin = 1;
+  
+}
+
+
+function clearSheet(withGrid) {
+
+  setFillColor(255,255,255);
+  fillRectangle(0,0,sheetWidth, sheetHeight);
+
+  // Canvas grid
+  setFillColor(100,100,100);
+
+  if(withGrid) {
+    for(y=0;y<sheetHeight;y+=gridSize){
+      for(x=0;x<sheetWidth;x+=gridSize){
+        drawDot(x,y,1);
+      }
+    }
+  }
+
+  // Canvas frame
+  setPenWidth(2);
+  drawRectangle(1, 1, sheetWidth-2, sheetHeight-2);
+  setPenWidth(1);
+  drawRectangle(4, 4, sheetWidth-8, sheetHeight-8);
+   
+  // clear text
+  for (i in sheetText) document.body.removeChild(sheetText[i]);
+  sheetText=[];
+
+  if(legendFlag==1) {
+    cntx = 0; spc = 8;
+    for(x=gridSize*(spc/2); x<sheetWidth; x=x+(gridSize*spc)) {
+      cntx=cntx+1; lgd=cntx+' ';
+      drawText(x,5,lgd);
+    }
+
+    cntx = 64;
+    for(y=gridSize*(spc/2); y<sheetHeight; y=y+(gridSize*spc)) {
+      cntx=cntx+1; lgd=String.fromCharCode(cntx);
+      drawText(6,y,lgd);
+    }
+
+    setPenWidth(2);
+    drawRectangle(16, 16, sheetWidth-31, sheetHeight-31);
+    setPenWidth(1);
+  }
+
+}
+
+
+
+
+function printSheet(width,height) {
+
+  x=confirm("Quit and print?");
+  if(!x) return;
+
+  window.scrollTo(0,1);
+  document.body.removeChild(tools);
+
+  clearSheet(0);     
+  execSource();
+
+  document.body.offsetHeight;
+  window.print();
+
+}
+
+
+function legend(enable) {
+
+  legendFlag=enable;
+  clearSheet(1);
+  begin = 1;
+
+}
+
+
+// -------------------------
+//     Source functions 
+// -------------------------
+
+
+function addSource(mode, flip, sx, sy, ex, ey, text) {
+
+  // lines
+  if(mode=="w" || mode=="b" || mode=="v") {
+
+    if(mode=="w" && x==ex && y==ey) source.push('j(' + x + ',' + y  +');'); 
+    else source.push(mode + '(' + sx + ',' + sy + ',' + ex + ',' + ey + ');');
+    exportSource(); return;
+  }
+
+  // devices (ic)
+  if(mode>0) {  
+    source.push('d(' + sx + ',' + sy + ',' + flip + ',' + mode + ');');
+    exportSource(); return; 
+  }
+
+  // text
+  if(mode=="t") {
+    if(text=="") return;
+    source.push('t(' + sx + ',' + sy + ',"' + text + '");');
+    exportSource(); return; 
+  }
+
+  // other symbols
+  source.push(mode + '(' + sx + ',' + sy + ');');
+  exportSource();
+
+}
+
+
+// Export source to text area
+
+function exportSource() {
+
+  var i=0;
+  var code="";
+
+  for(i in source) {
+    code = code+source[i]+"\n";
+  }
+  
+  document.forms[0].elements[14].value = code;
+
+  // write into file DB
+  eraseDB(myDB);
+  writeDB(myDB,code);
+
+}
+
+
+// Execute drawing code
+
+function execSource() {
+
+  var i=0;
+
+  // draw schematic
+  for(i in source) {
+    eval(source[i]);
+  }    
+
+}
+
+
+function refresh() {
+
+  clearSheet(1);
+  execSource();
+  exportSource();
+
+}
+
+
+// import code from text area
+
+function importSource() {
+
+  var i=0;
+  var code="";
+  source = [];
+
+  code = document.forms[0].elements[14].value;
+
+  ix = 0;
+  lines = code.split(";\n");
+
+  for(i in lines) {
+    if(lines[i].length>2) source[ix++] = lines[i]+';';
+  }
+
+  document.body.removeChild(tools);
+
+  // get ic definitions
+  for(i in source) {
+    if(source[i].search(/ic\[/)>0) {eval(source[i]);}
+  }    
+
+  createTools();
+
+  begin = 1;  
+  refresh();
+
+
+}
+
+
+// -------------------------
+//     Item align/save 
+// -------------------------
+
+function alignItem(mode, x, y, text) {
+
+  refresh();
+
+  setPenColor(0,180,0);
+
+  // text
+  if(mode=="t") t(x,y,text);
+
+  // Logic
+  if(mode=="AND")  AND(x,y);
+  if(mode=="NAND") NAND(x,y);
+  if(mode=="OR")   OR(x,y);
+  if(mode=="NOR")  NOR(x,y);
+  if(mode=="XOR")  XOR(x,y);
+  if(mode=="INV")  INV(x,y);
+  if(mode=="BUF")  BUF(x,y);
+
+  // Ground
+  if(mode=="g")  g(x,y);
+
+  // Misc symbols
+  if(mode=="aR")  aR(x,y);
+  if(mode=="aL")  aL(x,y);
+  if(mode=="tp")  {tp(x,y);t(x-1,y-3,text);}
+  if(mode=="o")   o(x,y);
+  if(mode=="sW")  sW(x,y);
+  if(mode=="pB")  pB(x,y);
+  if(mode=="eA")  eA(x,y);
+  if(mode=="tR")  tR(x,y);
+  if(mode=="f")   {f(x,y);t(x,y-2,text);}
+  if(mode=="xT")  {xT(x,y);t(x,y-2,text);}
+
+  // Resistor
+  if(mode=="rH") {rH(x,y);t(x,y-2,text);}
+  if(mode=="rV") {rV(x,y);t(x+1,y,text);}
+
+  // Coil
+  if(mode=="hH") {hH(x,y);t(x,y-2,text);}
+  if(mode=="hL") {hL(x,y);t(x+1,y,text);}
+  if(mode=="hR") {hR(x,y);t(x+1,y,text);}
+
+  // Capacitor
+  if(mode=="cH") {cH(x,y);t(x,y-2,text);}
+  if(mode=="cV") {cV(x,y);t(x+1,y,text);}
+  if(mode=="eV") {eV(x,y);t(x+1,y,text);}
+
+  // Diode
+  if(mode=="dR") {dR(x,y);t(x,y-2,text);}
+  if(mode=="dL") {dL(x,y);t(x,y-2,text);}
+  if(mode=="dU") {dU(x,y);t(x+1,y,text);}
+  if(mode=="dD") {dD(x,y);t(x+1,y,text);}
+  if(mode=="z")  {z(x,y);t(x+1,y,text);}
+  if(mode=="L")  {L(x,y);t(x+1,y,text);}
+
+  // NPN
+  if(mode=="nR") {nR(x,y);t(x+3,y-1,text);}
+  if(mode=="nL") {nL(x,y);t(x,y-2,text);}
+
+  // PNP
+  if(mode=="pR") {pR(x,y);t(x+3,y-2,text);}
+  if(mode=="pL") {pL(x,y);t(x,y-2,text);} 
+
+  // IC devices
+  if(mode>0) {cursor(mode,1,x,y);}
+
+  setPenColor(0,0,0);
+
+}
+
+
+function saveItem(mode, x, y, text) {
+
+  // text
+  if(mode=="t")  {t(x,y,text);addSource(mode,0,x,y,0,0,text);return;}
+
+  // Logic
+  if(mode=="AND")  AND(x,y);
+  if(mode=="NAND") NAND(x,y);
+  if(mode=="OR")   OR(x,y);
+  if(mode=="NOR")  NOR(x,y);
+  if(mode=="XOR")  XOR(x,y);
+  if(mode=="INV")  INV(x,y);
+  if(mode=="BUF")  BUF(x,y);
+
+  // Misc symbols
+  if(mode=="g")   g(x,y);
+  if(mode=="aR")  aR(x,y);
+  if(mode=="aL")  aL(x,y);
+  if(mode=="tp")  {tp(x,y);t(x-1,y-3,text);addSource("t",0,x-1,y-3,0,0,text);}
+  if(mode=="o")   o(x,y);
+  if(mode=="sW")  sW(x,y);
+  if(mode=="pB")  pB(x,y);
+  if(mode=="eA")  eA(x,y);
+  if(mode=="tR")  tR(x,y);
+  if(mode=="f")   {f(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+  if(mode=="xT")  {xT(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+
+  // Resistor
+  if(mode=="rH") {rH(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+  if(mode=="rV") {rV(x,y);t(x+1,y,text);addSource("t",0,x+1,y,0,0,text);}
+
+  // Coil
+  if(mode=="hH") {hH(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+  if(mode=="hL") {hL(x,y);t(x+1,y,text);addSource("t",0,x+1,y,0,0,text);}
+  if(mode=="hR") {hR(x,y);t(x+1,y,text);addSource("t",0,x+1,y,0,0,text);}
+
+  // Capacitor
+  if(mode=="cH") {cH(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+  if(mode=="cV") {cV(x,y);t(x+1,y,text);addSource("t",0,x+1,y,0,0,text);}
+  if(mode=="eV") {eV(x,y);t(x+1,y,text);addSource("t",0,x+1,y,0,0,text);}
+
+  // Diode
+  if(mode=="dR") {dR(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+  if(mode=="dL") {dL(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+  if(mode=="dU") {dU(x,y);t(x+1,y,text);addSource("t",0,x+1,y,0,0,text);}
+  if(mode=="dD") {dD(x,y);t(x+1,y,text);addSource("t",0,x+1,y,0,0,text);}
+  if(mode=="z")  {z(x,y);t(x+1,y,text); addSource("t",0,x+1,y,0,0,text);}
+  if(mode=="L")  {L(x,y);t(x+1,y,text); addSource("t",0,x+1,y,0,0,text);}
+
+  // NPN
+  if(mode=="nR") {nR(x,y);t(x+3,y-1,text);addSource("t",0,x+3,y-1,0,0,text);}
+  if(mode=="nL") {nL(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+
+  // PNP
+  if(mode=="pR") {pR(x,y);t(x+3,y-2,text);addSource("t",0,x+3,y-2,0,0,text);}
+  if(mode=="pL") {pL(x,y);t(x,y-2,text);addSource("t",0,x,y-2,0,0,text);}
+
+  // save source code
+  addSource(mode,0,x,y,0,0,"");
+
+
+}
+
+
+// -------------------------
+//       Clipboard 
+// -------------------------
+
+function copyClipboard() {
+
+  var i=0;
+  var coord = new Array();
+
+  // clear clipboard
+  clipboard = [];
+  saveboard = [];
+
+  // save origins
+  xOrigin = startX;
+  yOrigin = startY;
+
+  for(i in source) {
+  
+    line = source[i];
+
+    start = line.indexOf("(");
+    end = line.indexOf(");");
+
+    mode = line.substr(0,start);
+    start; end=end-1;
+    line = line.substr(start+1,end-start);
+
+    coord = line.split(",");
+    
+    if(startX>endX) { hold=startX;startX=endX;endX=hold; }
+    if(startY>endY) { hold=startY;startY=endY;endY=hold; }
+
+    if(coord[0]>=startX && coord[0]<=endX && coord[1]>=startY && coord[1]<=endY) {
+      if(mode!="sheet" || mode!="legend") clipboard.push(source[i]);
+    }
+    else { saveboard.push(source[i]); }
+ 
+  }
+ 
+  begin=1;
+
+}
+
+
+function insertBlock(newX, newY) {
+
+  var i=0, oldX1=0, oldY1=0, oldX2=0, oldY2=0, diffX=0, diffY=0;
+  var coord = new Array();
+
+  for(i in clipboard) {
+  
+    line = clipboard[i];
+
+    start = line.indexOf("(");
+    end = line.indexOf(");");
+
+    mode = line.substr(0,start);
+    start; end=end-1;
+    line = line.substr(start+1,end-start);
+
+    coord = line.split(",");
+    oldX1 = coord[0]*1;
+    oldY1 = coord[1]*1;
+    oldX2 = coord[2]*1;
+    oldY2 = coord[3]*1;
+
+    diffX = newX-xOrigin;
+    diffY = newY-yOrigin;
+
+    if(mode=="d") {
+      oldX1 = coord[0]*1;
+      oldY1 = coord[1]*1;
+      coord[4] = coord[2]*1;
+      mode = coord[3]*1; 
+   }
+
+    addSource(mode,coord[4],oldX1+diffX,oldY1+diffY,oldX2+diffX,oldY2+diffY,coord[5]);
+ 
+  }
+  
+}
+
+
+// -------------------------
+//      Flip mode 
+// -------------------------
+
+function flipSymbol(symbol) {
+
+  if(symbol=="aR") symbol="aL";
+  if(symbol=="nR") symbol="nL";
+  if(symbol=="pR") symbol="pL";
+  if(symbol=="dR") symbol="dL";
+  if(symbol=="hR") symbol="hL";
+
+  if(symbol=="rV") symbol="rH";
+  if(symbol=="cV") symbol="cH";
+
+  return symbol;
+
+}
+
+
+// -------------------------
+//      Handle Events 
+// -------------------------
+
+
+function tapEvent(e){
+
+  var flip = 0;
+  var x = parseInt((e.pageX-124)/16);
+  var y = parseInt(e.pageY/16);
+
+  var mode = document.forms[0].elements[2].value;
+  var text = document.forms[0].elements[3].value;
+
+  if(document.forms[0].elements[4].checked) { flip=1;}
+  if(flip) mode=flipSymbol(mode);
+
+
+ // Select tool  -----------------------------------
+  if(mode=="s") {
+
+    if(begin) {
+      begin=0;
+      selectedArea=0;
+      refresh();
+      startX=x;
+      startY=y;
+      cursor(mode,1,x,y);
+      return;     
+    }
+
+   if(!begin) {
+     cursor(mode,0,startX,startY);
+     endX=x;
+     endY=y;
+     setPenColor(0,180,0);
+
+     if(startX==endX && endY==endY) {drawCircle(startX*gridSize,startY*gridSize,10); endX=startX+gridSize;endY=endY+gridSize}
+     else {drawRectangle(startX*gridSize, startY*gridSize, (endX-startX)*gridSize, (endY-startY)*gridSize);}
+     setPenColor(0,0,0); 
+     begin=1;
+     selectedArea=1;
+     return;
+   }
+
+  }
+
+
+  // wires  ----------------------------------------- 
+
+  if(mode=="w" || mode=="b" || mode=="v") {
+
+    if(begin) {
+      begin=0;
+      startX=x;
+      startY=y;
+      cursor(mode,1,x,y);
+      return;     
+    }
+
+    if(!begin) {
+      cursor(mode,0,startX,startY);
+      endX=x;
+      endY=y;
+      if(mode=="w") w(startX,startY,endX,endY);
+      if(mode=="v") v(startX,startY,endX,endY);
+      if(mode=="b") b(startX,startY,endX,endY);
+
+      // save source code
+      addSource(mode,0,startX,startY,endX,endY,"");
+      
+      startX=endX;
+      startY=endY;
+      begin=1;
+      return;
+    }
+
+  }
+
+
+  // aligning ic devices  ---------------------------
+
+  if(mode>0) {
+
+    if(begin) {
+      startX=x;
+      startY=y;
+      alignItem(mode,startX,startY,"");
+      begin=0;
+      return;
+    }
+
+    if(!begin) { 
+      if(x!=startX || y!=startY) {
+        alignItem(mode,x,y,"");
+        startX=x;startY=y;
+        begin=0; return;
+      }
+
+      d(startX,startY,flip,mode);
+
+      // save source code
+      addSource(mode,flip,startX,startY,endX,endY,"");
+      begin=1;
+      return;
+    }
+
+  }
+
+
+  // aligning other items  ----------------------------
+
+  // text mode
+  if(mode=="t") {begin=1;saveItem(mode,x,y,text);}
+
+  if(begin) {
+    startX=x;
+    startY=y;
+    alignItem(mode,startX,startY,text); 
+    begin=0;
+    return;
+  }
+
+  // place it on 2nd tap
+  if(!begin) {
+    if(x!=startX || y!=startY) {
+      begin=0;
+      alignItem(mode,x,y,"");
+      startX=x;
+      startY=y;
+      return;
+    }
+  }
+
+
+  // Save item position in source ----------------------------------------
+
+  begin=1;
+  saveItem(mode,x,y,text);
+
+}
+
+
+function onEvent(event, handler) {
+  
+  document.body.addEventListener(event, handler, false);
+
+}
+
+
+// -------------------------
+//      Handle buttons 
+// -------------------------
+
+
+function wmode() {
+  begin=1; 
+  document.forms[0].elements[2].value="w";
+
+}
+
+
+function gmode() {
+
+  document.forms[0].elements[2].value="g";
+
+}
+
+
+function selectBlock() {
+  begin=1; 
+  selectedArea=0;
+  document.forms[0].elements[2].value="s";
+}
+
+
+function copyBlock() {
+
+  if(!selectedArea) return;
+
+  begin=0; 
+  copyClipboard();
+  refresh();
+  selectedArea=0;
+
+}
+
+
+function pasteBlock() {
+
+  begin=1; 
+ 
+  selectedArea=0;
+  insertBlock(startX,startY);
+  refresh();   
+
+}
+
+
+function cutBlock() {
+
+  if(!selectedArea) return;
+
+  begin=1; 
+  copyClipboard();
+
+  source = [];
+  source=saveboard;
+  saveboard=[];
+  refresh();
+  selectedArea=0;
+
+}
+
+
+function undo() {
+
+  source.pop();
+  refresh();
+  begin=1; selectedArea=0;
+}
+
+
+function cancel() {
+
+  var mode = document.forms[0].elements[2].value;
+
+  begin=1; selectedArea=0;
+  cursor(mode,0,startX,startY);
+  refresh();
+  
+}
+
+
+// Repeat wiring
+
+function repeat() {
+
+  var p1 = "", p2 = "";
+  var coord = new Array();
+  var i = source.length;
+  
+  if(!i) return;
+  item = source[i-1];
+
+  // eliminate w();
+  if(item.charAt(0) != "w") return;
+  pos=item.substring(2,item.length-2); 
+
+  // get coordinates
+  coord = pos.split(",");
+
+  // create repeating element H/V
+  if(coord[0]==coord[2]) {
+    coord[0]++;coord[2]++;
+    addSource("w",0,coord[0],coord[1],coord[2],coord[3],"");
+  }
+  if(coord[1]==coord[3]) {
+    coord[1]++;coord[3]++;
+    addSource("w",0,coord[0],coord[1],coord[2],coord[3],"");
+  }
+
+  refresh();
+
+}
+
+
+// ------------------------
+//    Database functions
+// ------------------------
+
+function initDB(database, filename, size)
+{
+ 
+  var version = '1.0';
+  var displayName = filename;
+ 
+  try {
+    if (!window.openDatabase) { return 0; } 
+    else { 
+      database = openDatabase(filename, version, displayName, size); 
+
+      database.transaction(
+        function (transaction) {
+          transaction.executeSql('CREATE TABLE IF NOT EXISTS code(datablob BLOB NOT NULL DEFAULT "");', [], nullDataHandler, errorHandler);
+        }
+      ); 
+
+    }
+
+    return database;
+  }
+
+  catch(e) {
+//    alert("DB error");
+  }
+
+  return 0;
+
+}
+
+
+// Erase file data
+
+function eraseDB(database) {
+
+  if(!database) return;
+
+  database.transaction(
+    function (transaction) {
+      transaction.executeSql('DELETE FROM code;', [], nullDataHandler, errorHandler);
+    }
+  ); 
+
+}
+
+
+// Write data to file
+
+function writeDB(database, data) {
+
+  if(!database) return;
+
+  database.transaction(
+    function (transaction) {
+      transaction.executeSql('INSERT INTO code VALUES(?);', [data ], nullDataHandler, errorHandler);
+    }
+  ); 
+
+}
+
+
+// Read file data
+
+function getData(transaction,results) {
+
+  var data = results.rows.item(0);
+  code = data['datablob'];
+  
+  document.forms[0].elements[14].value = code;
+  importSource();
+
+}
+
+function readDB(database) {
+    
+  database.transaction(
+    function (transaction) {
+      transaction.executeSql('SELECT * FROM code;', [], getData, errorHandler);
+    }
+  ); 
+  
+}
+
+
+// Database Error Handling
+
+function nullDataHandler(transaction, results)
+{
+}
+
+function errorHandler(transaction, error)
+{
+  alert('Error: '+error.message+' (Code '+error.code+')');
+}
+
+
+// -------------------------
+//     show help window
+// -------------------------
+
+function showHelp() {
+
+  var hlp = "<html><title>palmDraft Quick Help</title><body bgcolor='#EEE9CC'></body><small>";
+ 
+  win = window.open("","help","resizable=1,menu=no,scrollbars=yes,toolbar=no");
+
+  hlp += "<font color=\"#0000AA\"><h2>palmDraft (JavaScript version " + version + " )</h2></font><br>";
+  hlp += "<b>* Please visit <a href='http://pages.total.net/~hkonstas/palmdraft.html'>palmDraft's official website </a> for more information and sample schematics.</b><br><br><br>";
+
+  hlp += "<font color=\"#008800\"><i>Welcome to the JavaScript version of palmDraft!</i></font><br><br>";
+
+  hlp += "Originally designed for palm OS handhelds back in 2002, palmDraft is now ported as a Javascript multi-platform electronics ";
+  hlp += "CAD application for both analog and digital (logic) circuits. "; 
+  hlp += "You can use palmDraft on any Windows computer  with the Mozilla firefox, google Chrome or Safari for windows browser, any Mac computer ";
+  hlp += "within Safari browser, and also on Palm Pre, iPhone and iPod touch!<br><br>";
+
+  hlp += "Although this version works on most web browsers, it was designed from scratch for the iPhone /iPod touch platform. ";
+  hlp += "With palmDraft on an iPhone, you can use the familiar pinch gestures to zoom in and out the draft sheet, use your ";
+  hlp += "finger to place components and draw lines, drag the sheet, and even rotate the screen to use in landscape.<br><br><br>";
+
+  hlp += "<font color=\"#008800\"><i>Installation</i></font><br><br>";
+  hlp += "The palmDraft application comes in a single HTML file. All the javascript code is embedded ";
+  hlp += "inside the HTML file, including the basic symbols library. On Windows/Mac computers, simply open the pDraft.html file ";
+  hlp += "with the Safari or Mozilla browser. Please MAKE SURE you use the DEFAULT NORMAL ZOOM mode, otherwise the text on the schematic";
+  hlp += " will not be properly aligned.<br><br>"; 
+
+  hlp += "On the iPhone, you will need an app where you can store the pDraft HTML file and open it offline. There are many ";
+  hlp += "free iPhone apps that do that, in the file viewer category. You cannot use a websaver(tm) service to convert ";
+  hlp += "the HTML file into a data URL - the pDraft HTML is over 32k bytes and the Safari browser won't accept it. ";
+  hlp += "You can also host the HTML file in a server, and open it in Safari from there.<br><br><br>";
+ 
+  hlp += "<font color=\"#008800\"><i>Overview</i></font><br><br>Once you launch palmDraft within a browser, you will see the main ";
+  hlp += "screen with 2 sections. The right part is the sheet where you draw and manipulate the elements of your schematic. ";
+  hlp += "On the iPhone, you can use the pinch gestures to zoom in and out the sheet, and pan the screen by gliding your finger. ";
+  hlp += "On the left side of the sheet you will find the toolbar with the diagram source field.<br><br>";
+
+  hlp += "palmDraft is using this special source field to enable you to save and transfer your schematic in text form so you can open ";
+  hlp += "and edit your work on another browser session at a later time. You simply select, copy and paste this text into a text ";
+  hlp += "file, or as a note in iPhone's notepad. Later on, you can copy and paste back into the diagram source field to ";
+  hlp += "continue editing your schematic.<br><br>";    
+
+  hlp += "* Please note that pDraft now supports Safari's database storage (for iPhone, touch, Apple and Windows Safari only), ";
+  hlp += "so your schematic is automatically saved between sessions!<br><br>";
+
+  hlp += "In the toolbar you also have a print button. When you are done editing and saving your schematic, use this ";
+  hlp += "button (not for the iPhone or iPod) to print your schematic.<br><br><br>";
+
+  hlp += "<font color=\"#008800\"><i>Toolbar</i></font><br><br>";
+  hlp += "Here is the description of each item of the toolbar:<br><br>";
+  hlp += "<li>Line (shortcut) - Press to enter the Line mode. To draw lines, tap the start coordinates and a cursor will appear ";
+  hlp += "to mark the start of the line. Press the cancel button to cancel and restart. Tap again to select the end coordinates and ";
+  hlp += "draw the line. Press the REPEAT button to automatically repeat the line horizontally or vertically.<br><br>";
+
+  hlp += "<li>Ground (shortcut) - tap on the sheet region to place the ground symbol.<br><br>";
+  hlp += "<li>Mode selector - This drop down menu selects the symbol you need to place on the sheet. You will find the basic ";
+  hlp += "symbols in there, resistors, capacitors, transistors etc.. At the end of the list, you will find the user definable IC ";
+  hlp += "symbols (more about creating your own IC symbols later).<br><br>";
+
+  hlp += "Once a symbol is selected, tap on the area you wish to place it. Tap again on a different area for alignement or at the ";
+  hlp += "same location to pin the symbol down.<br><br>";
+
+  hlp += "<li>Label text field - here you write the text for symbol labels, or any other text you want to place on the sheet.<br><br>";
+  hlp += "<li>Flip - Flips the orientation of most symbols, including user defined ICs.<br><br>";
+  hlp += "<li>Undo - undo button, removes the last element on the sheet. You can undo as many times as you wish.<br><br>";
+  hlp += "<li>Cancel/Refresh  - this button cancels a starting point of a line,bus or power line, or a copy region, and refreshes the sheet.<br><br>";
+  hlp += "<li>Repeat Line - press to repeat horizontal or vertical lines.<br><br>";
+  hlp += "<li>Select - select a region by tapping the start and end coordinates to be cut, copy or paste. A green rectangle ";
+  hlp += "appears when a region is selected. Press cancel to cancel selection.<br><br>";
+  hlp += "<li>Cut - cuts a selected region from the sheet to the clipboard.<br><br>";
+  hlp += "<li>Copy - copies the selected region into palmDraft's clipboard.<br><br>";
+  hlp += "<li>Paste - first tap to select the destination coordinates and then press the paste button to paste the clipboard data.<br><br>";
+  hlp += "<li>To draw junctions, tap twice on the same coordinates when using the line mode.<br><br><br>";
+
+  hlp += "<font color=\"#008800\"><i>Schematic text data</i></font><br><br>";
+  hlp += "As mentionned earlier, palmDraft uses a schematic text field under the toolbar to save the schematic's data in text form. ";
+  hlp += "Each time you add an element to the sheet, you will notice the text representation of the element to appear in the list. ";
+  hlp += "For example, wire lines appear in a  'w(x,y,dx,dy)' form. All elements appear in a similar form, a letter describing the ";
+  hlp += "element, followed by its coordinates in parenthesis. Some elements have extra arguments, such as text labels or orientation flags.<br><br>";
+
+  hlp += "You can also edit the schematic text data with a text editor of your choice and copy paste back to palmDraft for further ";
+  hlp += "editing. Make sure every text data line is ended by a semi-colon.<br><br>";
+
+  hlp += "To include comments in the text data, use 2 slashes '//'. For example:   // this is a comment<br><br>";
+  hlp += "There is a small schematic demo included in the zip archive: demo.sch. You can copy-paste it into palmDraft. ";
+  hlp += "You can also edit it in notepad.<br><br><br>";
+
+  hlp += "<font color=\"#008800\"><i>Changing the sheet size</i></font><br><br>";
+  hlp += "You can change the sheet size by adding the following line at the beginning of your schematic text data:<br><br>";
+  hlp += " sheet(width,height);<br><br>Where width and height are the parameters for the screen size.<br><br><br>";
+
+  hlp += "<font color=\"#008800\"><i>Used defined IC symbols</i></font><br><br>";
+  hlp += "You can define your own IC symbols you can use in your schematics. They will automatically appear at the bottom of the ";
+  hlp += "symbols drop down menu. Each IC definition is in a form of a text string, part of the IC array.<br><br>";
+  hlp += "For example, we need a 10 pin IC named myCPU1234. A definition of such a component, including its pins is as follows:<br><br>";
+
+  hlp += " ic[1] = \"1234;myCPU;6;A1=1,A2=2,A3=3,A4=4;RESET=10=1,,CLK=14,DATA=15\";<br><br>";
+
+  hlp += "The definition is divided in 5 by the semicolons:<br><br>";
+  hlp += " 1) Component ID number. Must be unique for each IC definition.<br>";
+  hlp += " 2) Component name/part no. This will show in the drop down list.<br>";
+  hlp += " 3) Component width. 6 is usually shows good, but you may use different numbers to specify the width in grid spacing.<br>";
+  hlp += " 4) Definition for left side.<br>";
+  hlp += " 5) Definition for right side.<br><br>";
+
+  hlp += "Each of the 2 side definitions is divided by commas. Each element between the commas specifies the pin description ";
+  hlp += "followed by the pin number after the '='. For example, A1=1 means pin A1 is pin number 1. The polarity of the pin is ";
+  hlp += "specified by an additional '=1'. For example, A1=1=1 will draw the pin with a bar line on top of the pin label.<br><br>";  
+
+  hlp += "You may add spaces between pins on the component by specifying an empty pin definition between commas: ' ,, '. For example, ";
+  hlp += "RESET=10,,DATA=11 will leave a space between RESET and DATA pins on the schematic.<br><br>";
+
+  hlp += "You must include the IC array definition table at the beginning of your schematic. You can add several IC definitions, just ";
+  hlp += "choose a different array slot (ic[2], ic[3] ...). Please note ic[100]-ic[200] are reserved for built-in IC definitions.<br><br>";
+
+  hlp += "Here is a more complex sample definition of a 6502 CPU:<br><br>";
+  hlp += "ic[1]=\"6502;CPU6502;6;IRQ=4=-,NMI=6=-,RST=40=1,RDY=2,PHI0=37,SYNC=7,,A0=9,A1=10,A2=11,A3=12,A4=13,A5=14,A6=15,A7=16,A8=17,";
+  hlp += "A9=18,A10=19,A11=20,A12=22,A13=23,A14=24,A15=25;D0=33,D1=32,D2=31,D3=30,D4=29,D5=28,D6=27,D7=26,,S0=38,R/W=24,PHI1=3\";<br><br><br>";
+
+  hlp += "<font color=\"#008800\"><i>Conclusion</i></font><br><br>";
+  hlp += "I hope you find this version of palmDraft useful. If you do so, or have comments/suggestions, please let me know. ";
+  hlp += "If you designed a cool schematic with it and want to share it, please send me your schematic text file.<br><br>";
+
+  hlp += "I plan to eventually add more symbols in futur versions, in the mean time if you are familiar ";
+  hlp += "with javascript feel free to add your own by editing the javascript in the HTML file.<br><br>";
+ 
+  hlp += "palmDraft is freeware.<br><br> Harry Konstas<br><br> December 16, 2009.<br><br> http://pages.total.net/~hkonstas/palmdraft.html<br><br>";
+  hlp += " hkonstas@total.net<br><br>";
+
+  hlp += "</small></html>";
+
+  win.document.write(hlp);
+  
+}
+
+
+(function (
+    global, pool, math, width, chunks, digits, module, define, rngname) {
+
+//
+// The following constants are related to IEEE 754 limits.
+//
+var startdenom = math.pow(width, chunks),
+    significance = math.pow(2, digits),
+    overflow = significance * 2,
+    mask = width - 1,
+    nodecrypto;
+
+//
+// seedrandom()
+// This is the seedrandom function described above.
+//
+var impl = math['seed' + rngname] = function(seed, options, callback) {
+  var key = [];
+  options = (options == true) ? { entropy: true } : (options || {});
+
+  // Flatten the seed string or build one from local entropy if needed.
+  var shortseed = mixkey(flatten(
+    options.entropy ? [seed, tostring(pool)] :
+    (seed == null) ? autoseed() : seed, 3), key);
+
+  // Use the seed to initialize an ARC4 generator.
+  var arc4 = new ARC4(key);
+
+  // Mix the randomness into accumulated entropy.
+  mixkey(tostring(arc4.S), pool);
+
+  // Calling convention: what to return as a function of prng, seed, is_math.
+  return (options.pass || callback ||
+      // If called as a method of Math (Math.seedrandom()), mutate Math.random
+      // because that is how seedrandom.js has worked since v1.0.  Otherwise,
+      // it is a newer calling convention, so return the prng directly.
+      function(prng, seed, is_math_call) {
+        if (is_math_call) { math[rngname] = prng; return seed; }
+        else return prng;
+      })(
+
+  // This function returns a random double in [0, 1) that contains
+  // randomness in every bit of the mantissa of the IEEE 754 value.
+  function() {
+    var n = arc4.g(chunks),             // Start with a numerator n < 2 ^ 48
+        d = startdenom,                 //   and denominator d = 2 ^ 48.
+        x = 0;                          //   and no 'extra last byte'.
+    while (n < significance) {          // Fill up all significant digits by
+      n = (n + x) * width;              //   shifting numerator and
+      d *= width;                       //   denominator and generating a
+      x = arc4.g(1);                    //   new least-significant-byte.
+    }
+    while (n >= overflow) {             // To avoid rounding up, before adding
+      n /= 2;                           //   last byte, shift everything
+      d /= 2;                           //   right using integer math until
+      x >>>= 1;                         //   we have exactly the desired bits.
+    }
+    return (n + x) / d;                 // Form the number within [0, 1).
+  }, shortseed, 'global' in options ? options.global : (this == math));
+};
+
+//
+// ARC4
+//
+// An ARC4 implementation.  The constructor takes a key in the form of
+// an array of at most (width) integers that should be 0 <= x < (width).
+//
+// The g(count) method returns a pseudorandom integer that concatenates
+// the next (count) outputs from ARC4.  Its return value is a number x
+// that is in the range 0 <= x < (width ^ count).
+//
+
+function ARC4(key) {
+  var t, keylen = key.length,
+      me = this, i = 0, j = me.i = me.j = 0, s = me.S = [];
+
+  // The empty key [] is treated as [0].
+  if (!keylen) { key = [keylen++]; }
+
+  // Set up S using the standard key scheduling algorithm.
+  while (i < width) {
+    s[i] = i++;
+  }
+  for (i = 0; i < width; i++) {
+    s[i] = s[j = mask & (j + key[i % keylen] + (t = s[i]))];
+    s[j] = t;
+  }
+
+  // The "g" method returns the next (count) outputs as one number.
+  (me.g = function(count) {
+    // Using instance members instead of closure state nearly doubles speed.
+    var t, r = 0,
+        i = me.i, j = me.j, s = me.S;
+    while (count--) {
+      t = s[i = mask & (i + 1)];
+      r = r * width + s[mask & ((s[i] = s[j = mask & (j + t)]) + (s[j] = t))];
+    }
+    me.i = i; me.j = j;
+    return r;
+    // For robust unpredictability, the function call below automatically
+    // discards an initial batch of values.  This is called RC4-drop[256].
+    // See http://google.com/search?q=rsa+fluhrer+response&btnI
+  })(width);
+}
+
+//
+// flatten()
+// Converts an object tree to nested arrays of strings.
+//
+function flatten(obj, depth) {
+  var result = [], typ = (typeof obj), prop;
+  if (depth && typ == 'object') {
+    for (prop in obj) {
+      try { result.push(flatten(obj[prop], depth - 1)); } catch (e) {}
+    }
+  }
+  return (result.length ? result : typ == 'string' ? obj : obj + '\0');
+}
+
+//
+// mixkey()
+// Mixes a string seed into a key that is an array of integers, and
+// returns a shortened string seed that is equivalent to the result key.
+//
+function mixkey(seed, key) {
+  var stringseed = seed + '', smear, j = 0;
+  while (j < stringseed.length) {
+    key[mask & j] =
+      mask & ((smear ^= key[mask & j] * 19) + stringseed.charCodeAt(j++));
+  }
+  return tostring(key);
+}
+
+//
+// autoseed()
+// Returns an object for autoseeding, using window.crypto if available.
+//
+
+function autoseed(seed) {
+  try {
+    if (nodecrypto) return tostring(nodecrypto.randomBytes(width));
+    global.crypto.getRandomValues(seed = new Uint8Array(width));
+    return tostring(seed);
+  } catch (e) {
+    return [+new Date, global, (seed = global.navigator) && seed.plugins,
+      global.screen, tostring(pool)];
+  }
+}
+
+//
+// tostring()
+// Converts an array of charcodes to a string
+//
+function tostring(a) {
+  return String.fromCharCode.apply(0, a);
+}
+
+//
+// When seedrandom.js is loaded, we immediately mix a few bits
+// from the built-in RNG into the entropy pool.  Because we do
+// not want to interfere with deterministic PRNG state later,
+// seedrandom will not call math.random on its own again after
+// initialization.
+//
+mixkey(math[rngname](), pool);
+
+//
+// Nodejs and AMD support: export the implementation as a module using
+// either convention.
+//
+if (module && module.exports) {
+  module.exports = impl;
+  try {
+    // When in node.js, try using crypto package for autoseeding.
+    nodecrypto = require('crypto');
+  } catch (ex) {}
+} else if (define && define.amd) {
+  define(function() { return impl; });
+}
+
+//
+// Node.js native crypto support.
+//
+
+// End anonymous scope, and pass initial values.
+})(
+  this,   // global window object
+  [],     // pool: entropy pool starts empty
+  Math,   // math: package containing random, pow, and seedrandom
+  256,    // width: each RC4 output is 0 <= x < 256
+  6,      // chunks: at least six RC4 outputs for each double
+  52,     // digits: there are 52 significant digits in a double
+  (typeof module) == 'object' && module,    // present in node.js
+  (typeof define) == 'function' && define,  // present with an AMD loader
+  'random'// rngname: name for Math.random and Math.seedrandom
+);
+
+
+
+
+function initSheet(width,height) {
+
+  window.scrollTo(0,1);
+
+  sheetWidth = 100;
+  sheetHeight = 100;
+
+  //createTools(); 
+
+  createCanvas(200,200);
+  sheetWidth = width;
+  sheetHeight = height; 
+  clearSheet(1);  
+
+  // Initialize file saving DB
+  //myDB = initDB(myDB,"pDraft.sch",65536);
+
+  // Read file data
+  //readDB(myDB);
+
+
+setPenWidth(1);
+setPenColor(0);
+
+
+Math.seedrandom(1);
+
+setInterval(rndWin, 10);
+
+
+}
+
+
+// -------------------------------------------
+
+function rndWin() {
+
+ for(y=0;y<200;y+=2) {
+  for(x=0;x<200;x+=2) {
+    c=parseInt(Math.random()*10);
+    if(c>5) c=255;
+    else c=0;   
+ 
+    setFillColor(c,c,c);
+    ctx.fillRect(x, y, 2, 2);
+
+  }
+ }
+
+// z++;
+
+}
+
+
+
+
+</script>
+
+</HTML>
